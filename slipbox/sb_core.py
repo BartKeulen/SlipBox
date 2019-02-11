@@ -5,11 +5,14 @@ import pdb
 import re
 
 import yaml
+import pypandoc as pd
 
 
 SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 SB_DIR = os.path.join(os.path.expanduser('~'), '.slipbox')
 NOTES_DIR = os.path.join(SB_DIR, 'notes')
+HTML_DIR = os.path.join(SB_DIR, 'html')
+PDF_DIR = os.path.join(SB_DIR, 'pdf')
 NOTE_TYPES = ['Inbox', 'Archive', 'Reference']
 
 
@@ -18,8 +21,9 @@ class Note:
     def __init__(self, id, title, date, last_updated=None, tags=None, project=None, parents=None, note_type=None, content=None, bibkey=None):
         self.id = id
         self.title = title
-        self.date = date
-        self.last_updated = last_updated if last_updated else date
+        self.date = date if isinstance(date, datetime.date) else datetime.datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+        last_updated = self.date if last_updated is None else last_updated
+        self.last_updated = last_updated if isinstance(last_updated, datetime.date) else datetime.datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S")
         self.tags = [] if not tags else tags
         self.project = project
         self.parents = [] if not parents else parents
@@ -53,44 +57,83 @@ class Note:
         last_updated = datetime.datetime.now()
         with open(note_fp, 'w') as outfile:
             outfile.write('---\n')
-            outfile.write('title: {}\n'.format(self.title))
+            outfile.write('title: "{}"\n'.format(self.title))
             outfile.write('date: {}\n'.format(self.date.strftime("%Y-%m-%d %H:%M:%S")))
             outfile.write('last updated: {}\n'.format(last_updated.strftime("%Y-%m-%d %H:%M:%S")))
             outfile.write('tags: {}\n'.format(tags))
-            outfile.write('project: {}\n'.format(project))
+            outfile.write('project: "{}"\n'.format(project))
             outfile.write('parents: {}\n'.format(parents))
-            outfile.write('type: {}\n'.format(note_type))
-            if note_type is 'Reference':
-                outfile.write('bibkey: {}\n'.format(bibkey))
+            outfile.write('type: "{}"\n'.format(note_type))
+            if note_type == 'Reference':
+                outfile.write('bibkey: "{}"\n'.format(bibkey))
             outfile.write('---\n\n')
             outfile.write(content)
         self.last_updated = last_updated
 
         print("Saved note ({}): {}".format(self.id, self.title))
 
+    def generate_html(self):
+        filters = ['pandoc-citeproc']
+        pdoc_args = ['--mathjax', 
+                    '-s',
+                    '--template={}'.format(os.path.join(SB_DIR, 'template.html')),
+                    '--bibliography={}'.format(os.path.join(SB_DIR, 'bibliography.bib')), 
+                    '--csl={}'.format(os.path.join(SB_DIR, 'ieee.csl')),
+                    '--lua-filter={}'.format(os.path.join(SB_DIR, 'fix-links.lua'))]
+        filename = os.path.join(NOTES_DIR, '{}.md'.format(self.id))
+        outputfile = os.path.join(HTML_DIR, '{}.html'.format(self.id))
+        pd.convert_file(source_file=filename, 
+                    to='html5',
+                    format='md',
+                    outputfile=outputfile,
+                    extra_args=pdoc_args,
+                    filters=filters)
+        print("Generated html for note ({}): {}".format(self.id, self.title))
+
+    def generate_pdf(self):
+        filters = ['pandoc-citeproc']
+        pdoc_args = ['--mathjax', 
+                    '-s',
+                    '-V',
+                    'geometry:margin=1in',
+                    '--bibliography={}'.format(os.path.join(SB_DIR, 'bibliography.bib')), 
+                    '--csl={}'.format(os.path.join(SB_DIR, 'ieee.csl')),
+                    '--lua-filter={}'.format(os.path.join(SB_DIR, 'fix-links.lua'))]
+        filename = os.path.join(NOTES_DIR, '{}.md'.format(self.id))
+        outputfile = os.path.join(PDF_DIR, '{}.pdf'.format(self.id))
+        pd.convert_file(source_file=filename, 
+                    to='pdf',
+                    format='md',
+                    outputfile=outputfile,
+                    extra_args=pdoc_args,
+                    filters=filters)
+        print("Generated pdf for note ({}): {}".format(self.id, self.title))
+
     def get_children(self):
         all_notes = get_all_notes()
         children = []
         for note in all_notes:
-            if self.id in note.parents:
+            if str(self.id) in note.parents:
                 children.append(note)
-        return children
+        return sorted(children)
 
     def get_parents(self):
-        return [Note.load(parent) for parent in self.parents]
+        parents = [Note.load(parent) for parent in self.parents]
+        return sorted(parents)
 
     def get_links_out(self):
-        matches = re.findall(r'(\d.md)', self.content)
-        return [Note.load(int(f.split('.')[0])) for f in matches]
+        matches = re.findall(r'\[.*\]\((\d+).md\)', self.content)
+        linked_notes = [Note.load(int(f)) for f in matches]
+        return sorted(linked_notes)
 
     def get_links_in(self):
         all_notes = get_all_notes()
         linked_notes = []
         for note in all_notes:
-            match = re.search(r'({}.md)'.format(self.id), note.content)
+            match = re.search(r'\[.*\]\({}.md\)'.format(self.id), note.content)
             if match is not None:
                 linked_notes.append(note)
-        return linked_notes
+        return sorted(linked_notes)
 
     @classmethod
     def load(cls, id):
@@ -130,6 +173,20 @@ class Note:
 
     def __str__(self):
         return '{}:\n id: {}\n title: {}\n date: {}\n last_updated: {}\n tags: {}\n project: {}\n parents: {}\n note_type: {}\n bibkey: {}\n content:\n\n{}'.format(self.__class__.__name__, self.id, self.title, self.date.strftime("%Y-%m-%d %H:%M:%S"), self.last_updated.strftime("%Y-%m-%d %H:%M:%S"), self.tags, self.project, self.parents, self.note_type, self.bibkey, self.content)
+
+    def __cmp__(self, other):
+        if hasattr(other, 'id'):
+            if type(other.id) is not int:
+                other_id = int(other.id)
+            else:
+                other_id = other.id
+
+            if self.id < other_id:
+                return -1
+            else:
+                return 1
+        else:
+            return 1
 
     def print_links(self):
         links_out = self.get_links_out()
@@ -193,6 +250,24 @@ def get_projects():
 
 def get_notes_with_tag(tag):
     return [note for note in get_all_notes() if tag in note.tags]
+
+
+def generate_html(id=None):
+    if id:
+        note = Note.load(id)
+        note.generate_html()
+    else:
+        for note in sorted(get_all_notes()):
+            note.generate_html()
+
+
+def generate_pdf(id=None):
+    if id:
+        note = Note.load(id)
+        note.generate_pdf()
+    else:
+        for note in sorted(get_all_notes()):
+            note.generate_pdf()
 
 
 def init_slipbox():
