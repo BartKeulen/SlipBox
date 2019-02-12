@@ -1,4 +1,5 @@
 import os
+import fnmatch
 import datetime
 import subprocess
 import pdb
@@ -8,12 +9,13 @@ import yaml
 import pypandoc as pd
 
 
-SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
-SB_DIR = os.path.join(os.path.expanduser('~'), '.slipbox')
-NOTES_DIR = os.path.join(SB_DIR, 'notes')
-HTML_DIR = os.path.join(SB_DIR, 'html')
-PDF_DIR = os.path.join(SB_DIR, 'pdf')
-NOTE_TYPES = ['Inbox', 'Archive', 'Reference']
+from .sb_config import SB_DIR, SETTINGS
+
+# SB_DIR = os.path.join(os.path.expanduser('~'), '.slipbox')
+NOTES_DIR = os.path.join(SB_DIR, SETTINGS['notes_path'])
+HTML_DIR = os.path.join(SB_DIR, SETTINGS['html_path'])
+PDF_DIR = os.path.join(SB_DIR, SETTINGS['pdf_path'])
+NOTE_TYPES = ['Inbox', 'Index', 'Archive', 'Reference']
 
 
 class Note:
@@ -38,7 +40,7 @@ class Note:
         # TODO: Assert if parents exist
 
     def save(self):
-        note_fp = os.path.join(NOTES_DIR, '{}.md'.format(self.id))
+        note_fp = os.path.join(NOTES_DIR, '{} - {}.md'.format(self.id, self.title))
 
         # Set metadata to empty string or arguments
         tags = '' if not self.tags else self.tags
@@ -70,7 +72,7 @@ class Note:
             outfile.write(content)
         self.last_updated = last_updated
 
-        print("Saved note ({}): {}".format(self.id, self.title))
+        print("Saved note: {} - {}".format(self.id, self.title))
 
     def generate_html(self):
         filters = ['pandoc-citeproc']
@@ -136,11 +138,46 @@ class Note:
         return sorted(linked_notes)
 
     @classmethod
-    def load(cls, id):
-        fp = os.path.join(NOTES_DIR, '{}.md'.format(id))
-        if not os.path.isfile(fp):
-            print("No note found with id {}".format(id))
-            return '{}.md'.format(id)
+    def load(cls, note_id, title):
+        fp = None
+        if title is None and note_id is None:
+            raise Exception("Please give an id or title")
+        elif note_id and title:
+            fp = os.path.join(NOTES_DIR, '{} - {}.md'.format(note_id, title))
+        elif note_id:
+            fs = []
+            for f in os.listdir(NOTES_DIR):
+                if fnmatch.fnmatch(f, '*{}*.md'.format(note_id)):
+                    fs.append(f)
+            if len(fs) > 1:
+                output_str = 'More than one note found with id {}:'.format(note_id)
+                for f in fs:
+                    output_str += '\n{}'.format(f)
+                    output_str = output_str[:-3]
+                print(output_str)
+                return None
+            elif len(fs) == 1:
+                title = fs[0].split('.')[0].split(' - ')[1]
+                fp = os.path.join(NOTES_DIR, fs[0])
+        elif title:
+            fs = []
+            for f in os.listdir(NOTES_DIR):
+                if fnmatch.fnmatch(f, '*{}*.md'.format(title)):
+                    fs.append(f)
+            if len(fs) > 1:
+                output_str = 'More than one note found with title {}:'.format(title)
+                for f in fs:
+                    output_str += '\n{}'.format(f)
+                    output_str = output_str[:-3]
+                print(output_str)
+                return None
+            elif len(fs) == 1:
+                    note_id = int(fs[0].split('.')[0].split(' - ')[0])
+                    fp = os.path.join(NOTES_DIR, fs[0])
+
+        if fp is None or not os.path.isfile(fp):
+            print("No note found with id {} and title {}".format(note_id, title))
+            return None
 
         with open(fp, 'r') as f:
             tmp = f.read().split('---')
@@ -157,7 +194,7 @@ class Note:
 
             content = '---'.join(tmp[2:]).lstrip()
 
-            note = cls(id, title, date, last_updated=last_updated, tags=tags, project=project, parents=parents, note_type=note_type, content=content, bibkey=bibkey)
+            note = cls(note_id, title, date, last_updated=last_updated, tags=tags, project=project, parents=parents, note_type=note_type, content=content, bibkey=bibkey)
             return note
 
     @classmethod
@@ -169,7 +206,7 @@ class Note:
         return note
 
     def __repr__(self):
-        return '{}({}, {})'.format(self.__class__.__name__, self.id, self.title)
+        return '{} - {}'.format(self.id, self.title)
 
     def __str__(self):
         return '{}:\n id: {}\n title: {}\n date: {}\n last_updated: {}\n tags: {}\n project: {}\n parents: {}\n note_type: {}\n bibkey: {}\n content:\n\n{}'.format(self.__class__.__name__, self.id, self.title, self.date.strftime("%Y-%m-%d %H:%M:%S"), self.last_updated.strftime("%Y-%m-%d %H:%M:%S"), self.tags, self.project, self.parents, self.note_type, self.bibkey, self.content)
@@ -215,17 +252,26 @@ class Note:
     def show(self):
         print(self)
 
+    def get_fp(self):
+        return os.path.join(NOTES_DIR, '{} - {}.md'.format(self.id, self.title))
+
 
 def get_new_note_id():
+    new_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     all_notes = get_all_notes()
-    cur_id = 0
     for note in all_notes:
-        cur_id = note.id if note.id > cur_id else cur_id
-    return cur_id + 1
+        if new_id == note.id:
+            print("Found note with same id, try to generate new id")
+            return get_new_note_id()
+    return new_id
 
 
 def get_all_notes():
-    return [Note.load(int(f.split('.')[0])) for f in os.listdir(NOTES_DIR) if os.path.isfile(os.path.join(NOTES_DIR, f))]
+    notes = []
+    for f in os.listdir(NOTES_DIR):
+        note_id, title = f.split('.')[0].split(' - ')
+        notes.append(Note.load(int(note_id), title))
+    return notes
 
 
 def get_tags():
@@ -276,12 +322,3 @@ def init_slipbox():
         os.makedirs(os.path.join(SB_DIR, 'notes'))
         os.makedirs(os.path.join(SB_DIR, 'attachments'))
 
-
-
-if __name__ == "__main__":
-    # print(get_links_to_note(2))
-    note = Note.load(2)
-    linkes_out = note.get_links_out()
-    print(linkes_out)
-    print(note.get_links_in())
-    pdb.set_trace()

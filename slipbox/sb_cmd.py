@@ -3,7 +3,10 @@ import subprocess
 
 import click
 
-from .sb_core import Note, get_notes_with_tag, get_tags, get_notes_with_project, get_projects, init_slipbox, get_all_notes, generate_html, generate_pdf, NOTES_DIR
+from .sb_config import SB_DIR, SETTINGS, init_sb
+from .sb_core import Note, get_notes_with_tag, get_tags, get_notes_with_project, get_projects, get_all_notes, generate_html, generate_pdf
+
+NOTES_DIR = os.path.join(SB_DIR, SETTINGS['notes_path'])
 
 
 @click.group('note')
@@ -13,7 +16,7 @@ def cli():
 
 @click.command()
 def init():
-    init_slipbox()
+    init_sb()
 
 
 @click.command()
@@ -45,10 +48,12 @@ def update(id, title, tag, project, parent, type, content, bibkey):
 
 
 @click.command()
-@click.argument('id', type=int)
-def edit(id):
-    fp = os.path.join(NOTES_DIR, '{}.md'.format(id))
-    subprocess.call(['editor', fp])
+@click.option('-id', '--id', default=None, type=int)
+@click.option('-title', '--title', default=None, type=str)
+def edit(id, title):
+    note = Note.load(id, title)
+    if note:
+        subprocess.call(['editor', note.get_fp()])
 
 
 @click.command()
@@ -82,11 +87,12 @@ def notes(project, tag, type):
     # Sort notes on id
     notes = sorted(all_notes)
 
-    output_str = 'Notes:\n'
+    # output_str = 'Notes:\n'
+    output_str = ''
     for note in notes:
-        output_str += ' - {}\n'.format(repr(note))
+        output_str += '{}\n'.format(repr(note))
 
-    print(output_str)
+    print(output_str[:-1])
 
 
 @click.command()
@@ -113,19 +119,21 @@ def show(id):
 @click.command()
 def tags():
     tags = get_tags()
-    output_str = 'Tags:\n'
+    # output_str = 'Tags:\n'
+    output_str = ''
     for tag in tags:
-        output_str += ' - {}\n'.format(tag)
-    print(output_str)
+        output_str += '{}\n'.format(tag)
+    print(output_str[:-1])
 
 
 @click.command()
 def projects():
     projects = get_projects()
-    output_str = 'Projects:\n'
+    # output_str = 'Projects:\n'
+    output_str = ''
     for project in projects:
-        output_str += ' - {}\n'.format(project)
-    print(output_str)
+        output_str += '{}\n'.format(project)
+    print(output_str[:-1])
 
 
 @click.command()
