@@ -8,33 +8,28 @@ import re
 import yaml
 import pypandoc as pd
 
-from .sb_config import SB_DIR, SETTINGS
+from .sb_config import get_setting, get_sb_dir
 from .sb_note import Note
-
-
-NOTES_DIR = os.path.join(SB_DIR, SETTINGS['notes_path'])
-HTML_DIR = os.path.join(SB_DIR, SETTINGS['html_path'])
-PDF_DIR = os.path.join(SB_DIR, SETTINGS['pdf_path'])
-
+from .sb_utils import id_title_from_filename
 
 
 def init_slipbox():
-    if not os.path.isdir(SB_DIR):
-        os.makedirs(SB_DIR)
-        os.makedirs(os.path.join(SB_DIR, 'notes'))
-        os.makedirs(os.path.join(SB_DIR, 'attachments'))
+    if not os.path.isdir(get_sb_dir()):
+        os.makedirs(get_sb_dir())
+        os.makedirs(os.path.join(get_sb_dir(), 'notes'))
+        os.makedirs(os.path.join(get_sb_dir(), 'attachments'))
 
 
 def get_all_notes():
     note_ids = []
     titles = []
     notes = []
-    for f in os.listdir(NOTES_DIR):
-        note_id, title = f.split('.')[0].split(' - ')
+    for filename in os.listdir(os.path.join(get_sb_dir(), get_setting('notes_path'))):
+        note_id, title = id_title_from_filename(filename)
         note_ids.append(note_id)
         titles.append(title)
-        notes.append(Note.load(int(note_id), title))
-    return note_ids, titles, notes
+        notes.append(Note.load(filename=filename))
+    return notes, note_ids, titles
 
 
 def get_new_note_id(notes):
@@ -74,45 +69,21 @@ def get_notes_with_tag(notes, tag):
     return [note for note in notes if tag in note.tags]
 
 
-def generate_html(notes, note_id=None):
-    generate_index_html(notes)
-    if note_id:
-        note = Note.load(note_id)
-        note.generate_html()
-    else:
-        for note in sorted(notes):
-            note.generate_html()
+# def generate_html(notes, note=None):
+#     generate_index_html(notes)
+#     if note:
+#         note.generate_html()
+#     else:
+#         for note in sorted(notes):
+#             note.generate_html()
 
 
-def generate_index_html(notes):
-    md_str = '# Notes\n'
-    for note in sorted(notes):
-        md_str += '\n- [[{}]] - {}'.format(note.id, note.title)
-
-    filters = ['pandoc-citeproc']
-    pdoc_args = ['--mathjax',
-                '-s',
-                '--metadata=reference-section-title:References',
-                '--variable=index:{}'.format(SETTINGS['index']),
-                '--variable=pagetitle:{}'.format('Index'),
-                '--template={}'.format(os.path.join(SB_DIR, 'template.html')),
-                '--bibliography={}'.format(os.path.join(SB_DIR,'bibliography.bib')), 
-                '--csl={}'.format(os.path.join(SB_DIR, 'ieee.csl')),
-                '--lua-filter={}'.format(os.path.join(SB_DIR, 'fix-links.lua'))]
-    outputfile = os.path.join(HTML_DIR, 'index.html')
-    pd.convert_text(md_str,
-                        to='html5',
-                        format='md',
-                        outputfile=outputfile,
-                        extra_args=pdoc_args,
-                        filters=filters)
 
 
-def generate_pdf(notes, note_id=None):
-    if note_id:
-        note = Note.load(note_id)
-        note.generate_pdf()
-    else:
-        for note in sorted(notes):
-            note.generate_pdf()
+# def generate_pdf(notes, note=None):
+#     if note:
+#         note.generate_pdf()
+#     else:
+#         for note in sorted(notes):
+#             note.generate_pdf()
     
