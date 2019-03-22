@@ -8,7 +8,7 @@ from .sb_core import get_links_in, get_children
 
 index_html_build = False 
 
-def generate_html(notes, note=None):
+def generate_html(notes, note=None, generate_links_sequence=True):
     global index_html_build
     if not index_html_build:
         generate_overview(notes)
@@ -16,7 +16,11 @@ def generate_html(notes, note=None):
         
     if note is None:
         for _note in notes:
-            generate_html(notes, _note)
+            try:
+                generate_html(notes, _note, generate_links_sequence=False)
+            except Exception as exc:
+                print(exc)
+                print(_note.id)
         return
 
     filters = ['pandoc-citeproc']
@@ -60,6 +64,12 @@ def generate_html(notes, note=None):
                     extra_args=pdoc_args,
                     filters=filters)
     print('Generated html for note: {}'.format(note))
+
+    if generate_links_sequence:
+        print('Generate html for linked notes.')
+        links_sequence = links_in + links_out + parents + children
+        for _note in links_sequence:
+            generate_html(notes, _note, generate_links_sequence=False)
 
 
 def list_to_html(note_list):

@@ -182,13 +182,13 @@ class Note:
         return '[{}] {} - {}'.format(self.note_type[0], self.id, self.title)
 
     def __cmp__(self, other):
-        if hasattr(other, 'id'):
-            if type(other.id) is not int:
-                other_id = int(other.id)
+        if hasattr(other, 'last_updated'):
+            if not isinstance(other.last_updated, datetime.date):
+                other_last_updated = datetime.datetime.strptime(other.last_updated, '%Y-%m-%d %H:%M:%S')
             else:
-                other_id = other.id
+                other_last_updated = other.last_updated
 
-            if self.id > other_id:
+            if self.last_updated > other_last_updated:
                 return -1
             else:
                 return 1

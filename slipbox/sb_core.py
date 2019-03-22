@@ -47,7 +47,7 @@ def get_links_in(notes, note):
     for link_in_note in notes:
         if note.id in link_in_note.linked_notes:
             links_in.append(link_in_note)
-    return links_in
+    return sorted(links_in)
 
 
 def get_children(notes, note):
@@ -55,7 +55,7 @@ def get_children(notes, note):
     for child_note in notes:
         if note.id in child_note.parents:
             children.append(child_note)
-    return children
+    return sorted(children)
 
 def get_tags(notes):
     tags = set()
